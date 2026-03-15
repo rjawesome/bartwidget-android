@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:layoutDirection="ltr">
+
+    <!-- Container to exactly clip the first two characters -->
+    <FrameLayout
+        android:id="@+id/min_container"
+        android:layout_width="29dp"
+        android:layout_height="wrap_content"
+        android:clipChildren="true">
+        
+        <Chronometer
+            android:id="@+id/chronometer_min"
+            android:layout_width="100dp"
+            android:layout_height="wrap_content"
+            android:countDown="true"
+            android:singleLine="true"
+            android:textSize="24dp"
+            android:typeface="monospace"
+            android:includeFontPadding="false"
+            android:textColor="#FFFFFF" />
+    </FrameLayout>
+
+    <!-- Solid block to completely erase the rest of the large chronometer text -->
+    <FrameLayout
+        android:layout_width="50dp"
+        android:layout_height="wrap_content"
+        android:layout_alignTop="@id/min_container"
+        android:layout_alignBottom="@id/min_container"
+        android:layout_toRightOf="@id/min_container"
+        android:layout_marginLeft="-1dp"
+        android:background="#121212" />
+
+    <!-- Container for Seconds & Delay, acting as an overlay -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignTop="@id/min_container"
+        android:layout_toRightOf="@id/min_container"
+        android:layout_marginLeft="-1dp"
+        android:orientation="vertical"
+        android:paddingLeft="3dp"
+        android:paddingTop="2dp"
+        android:clipChildren="false">
+
+        <!-- Small chronometer (Seconds intended) -->
+        <FrameLayout
+            android:layout_width="14dp"
+            android:layout_height="wrap_content"
+            android:clipChildren="true">
+            
+            <Chronometer
+                android:id="@+id/chronometer_sec"
+                android:layout_width="100dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="right"
+                android:gravity="right"
+                android:countDown="true"
+                android:singleLine="true"
+                android:textSize="10dp"
+                android:typeface="monospace"
+                android:includeFontPadding="false"
+                android:textColor="#FFFFFF" />
+        </FrameLayout>
+
+        <!-- Delay Text -->
+        <TextView
+            android:id="@+id/delay_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="10dp"
+            android:textStyle="bold"
+            android:typeface="monospace"
+            android:includeFontPadding="false"
+            android:textColor="#EF5350"
+            android:visibility="gone" />
+    </LinearLayout>
+</RelativeLayout>

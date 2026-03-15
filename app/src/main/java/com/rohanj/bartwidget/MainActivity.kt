@@ -29,7 +29,7 @@ import java.net.URL
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-const val API_BASE_URL = "http://127.0.0.1:3000" // TODO: Change this to your actual API server URL
+const val API_BASE_URL = "http://192.168.0.193:3000" // TODO: Change this to your actual API server URL
 
 class MainActivity : ComponentActivity() {
 

@@ -21,7 +21,19 @@ class BartFcmService : FirebaseMessagingService() {
             json.put(key, value)
         }
         val dataPayload = json.toString()
-        val newTimestamp = message.data["timestamp"]?.toLongOrNull() ?: 0L
+        
+        var newTimestamp = 0L
+        val tsString = message.data["timestamp"]
+        if (tsString != null) {
+            try {
+                val isoFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.getDefault()).apply {
+                    timeZone = java.util.TimeZone.getTimeZone("UTC")
+                }
+                newTimestamp = isoFormat.parse(tsString)?.time ?: 0L
+            } catch (e: Exception) {
+                newTimestamp = tsString.toLongOrNull() ?: 0L
+            }
+        }
         Log.d("BartFcmService", "Received payload with timestamp $newTimestamp: $dataPayload")
 
         // Dispatch an update to all instances of our widget
@@ -37,7 +49,19 @@ class BartFcmService : FirebaseMessagingService() {
                     var existingTimestamp = 0L
                     if (existingData != null) {
                         try {
-                            existingTimestamp = org.json.JSONObject(existingData).optLong("timestamp", 0L)
+                            val jsonObj = org.json.JSONObject(existingData)
+                            val existTsStr = jsonObj.optString("timestamp", "")
+                            if (existTsStr.isNotEmpty()) {
+                                try {
+                                    val isoFormat = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.getDefault()).apply {
+                                        timeZone = java.util.TimeZone.getTimeZone("UTC")
+                                    }
+                                    existingTimestamp = isoFormat.parse(existTsStr)?.time ?: 0L
+                                } catch (e: Exception) {
+                                    existingTimestamp = jsonObj.optLong("timestamp", 0L)
+                                    if (existingTimestamp == 0L) existingTimestamp = existTsStr.toLongOrNull() ?: 0L
+                                }
+                            }
                         } catch (e: Exception) {
                             e.printStackTrace()
                         }
