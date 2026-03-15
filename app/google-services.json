@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "715819804531",
+    "firebase_url": "https://rjproj-810c8.firebaseio.com",
+    "project_id": "rjproj-810c8",
+    "storage_bucket": "rjproj-810c8.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:715819804531:android:c052f51e119b34f2734706",
+        "android_client_info": {
+          "package_name": "com.rohanj.bartwidget"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "715819804531-o3ihep2cokt0iogh95mefrl3ktdntm74.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB3SNG0zuVeD6AELexneZZbkxCf-Wxw4fM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "715819804531-o3ihep2cokt0iogh95mefrl3ktdntm74.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
