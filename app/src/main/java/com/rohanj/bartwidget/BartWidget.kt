@@ -63,8 +63,9 @@ class BartWidget : GlanceAppWidget() {
             val prefs = currentState<Preferences>()
             val isRefreshing = prefs[isRefreshingKey] ?: false
             val notificationData = prefs[widgetDataKey] ?: "Waiting for notification..."
+            val savedStation = prefs[stationNameKey]
 
-            var stationName = "Waiting for data..."
+            val displayStation = if (savedStation != null) "$savedStation \u25BE" else "Select a Station \u25BE"
             val departuresList = mutableListOf<Pair<String, List<Departure>>>()
 
             val currentTimeMs = System.currentTimeMillis()
@@ -75,9 +76,6 @@ class BartWidget : GlanceAppWidget() {
             try {
                 Log.d("MyCoolProcess", "Notification data: $notificationData")
                 val json = JSONObject(notificationData)
-                if (json.has("station")) {
-                    stationName = json.optString("station", "Unknown Station")
-                }
                 if (json.has("timestamp")) {
                     val tsString = json.optString("timestamp", "")
                     if (tsString.isNotEmpty()) {
@@ -143,7 +141,7 @@ class BartWidget : GlanceAppWidget() {
             val bootTimeMs = System.currentTimeMillis() - SystemClock.elapsedRealtime()
 
             val stationLines = departuresList.map { it.first }
-            val condition1 = stationLines.none { it.startsWith("Orange") } || stationLines.any { it.startsWith("Blue") }
+            val condition1 = stationLines.none { it.startsWith("Orange") } || stationLines.any { it.startsWith("Blue") || stationLines.any { it.startsWith("Green") }
 
             val outboundLines = mutableListOf<Pair<String, List<Departure>>>()
             val inboundLines = mutableListOf<Pair<String, List<Departure>>>()
@@ -176,9 +174,16 @@ class BartWidget : GlanceAppWidget() {
                 horizontalAlignment = Alignment.Start
             ) {
                 Text(
-                    text = stationName,
+                    text = displayStation,
                     style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 18.sp, color = ColorProvider(Color.White)),
-                    modifier = GlanceModifier.padding(bottom = 12.dp)
+                    modifier = GlanceModifier.padding(bottom = 12.dp).clickable(
+                        actionStartActivity(
+                            Intent(context, MainActivity::class.java).apply {
+                                action = "SELECT_STATION"
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                            }
+                        )
+                    )
                 )
 
                 if (outboundLines.isNotEmpty()) {
@@ -325,17 +330,6 @@ class BartWidget : GlanceAppWidget() {
                     }
                 }
 
-                Button(
-                    text = "Register",
-                    modifier = GlanceModifier.fillMaxWidth().padding(top = 8.dp),
-                    onClick = actionStartActivity(
-                        Intent(context, MainActivity::class.java).apply {
-                            action = "REGISTER_ACTION"
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                        }
-                    )
-                )
-
                 Row(
                     modifier = GlanceModifier.fillMaxWidth().padding(top = 16.dp),
                     verticalAlignment = Alignment.Bottom
@@ -375,6 +369,7 @@ class BartWidget : GlanceAppWidget() {
         val widgetDataKey = stringPreferencesKey("notification_data")
         val isRefreshingKey = booleanPreferencesKey("is_refreshing")
         val forceRefreshKey = longPreferencesKey("force_refresh")
+        val stationNameKey = stringPreferencesKey("station_name")
     }
 }
 
