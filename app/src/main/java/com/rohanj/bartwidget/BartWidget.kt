@@ -373,7 +373,7 @@ class BartWidget : GlanceAppWidget() {
 
                 Column(modifier = GlanceModifier.padding(top = 16.dp)) {
                     Text(
-                        text = "Last synced: $lastSyncedStr",
+                        text = "Last recieved data: $lastSyncedStr",
                         style = TextStyle(fontSize = 12.sp, color = ColorProvider(Color.Gray))
                     )
                     Text(

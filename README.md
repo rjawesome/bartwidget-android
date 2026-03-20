@@ -48,7 +48,7 @@ The app uses Firebase Cloud Messaging topics to receive real-time push updates f
 1. Long-press on your Android home screen and open the **Widgets** menu.
 2. Find **BART Widget** and drag it onto your home screen.
 3. Tap the **Select a Station** text on the widget.
-4. The configuration app will open (ensure you grant Notification permissions if prompted).
+4. The configuration app will open.
 5. Search for and select your desired BART station.
 6. The widget will automatically subscribe to the FCM topic for that station and pull the latest data from the Turso database!
 

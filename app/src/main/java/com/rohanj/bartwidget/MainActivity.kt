@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.material3.darkColorScheme
@@ -130,26 +131,8 @@ class MainActivity : ComponentActivity() {
 
     private var appWidgetId: Int = android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID
 
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted: Boolean ->
-        if (!isGranted) {
-            Toast.makeText(this, "Push notifications permission is required to receive updates.", Toast.LENGTH_LONG).show()
-        }
-        else {
-            Toast.makeText(this, "Notification permissions succesfully granted. Select station again.", Toast.LENGTH_LONG).show()
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Request notification permission if needed
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
 
         appWidgetId = intent?.extras?.getInt(
             android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID,
@@ -159,25 +142,21 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    StationSelectionScreen(
-                        onStationSelected = { station ->
-                            registerStation(station, appWidgetId)
-                        }
-                    )
+                    if (appWidgetId == android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID) {
+                        InstructionsScreen()
+                    } else {
+                        StationSelectionScreen(
+                            onStationSelected = { station ->
+                                registerStation(station, appWidgetId)
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 
-    private fun registerStation(stationName: String, appWidgetId: Int) {
-        // Enforce push permissions at registration checkpoint
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                return
-            }
-        }
-        
+    private fun registerStation(stationName: String, appWidgetId: Int) {   
         if (appWidgetId == android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID) {
             Toast.makeText(this, "Please add a widget to the home screen and press Select Station on the widget.", Toast.LENGTH_LONG).show()
             finish()
@@ -235,6 +214,34 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this@MainActivity, "An issue occurred: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
         }
+    }
+}
+
+@Composable
+fun InstructionsScreen() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.Start
+    ) {
+        Text(
+            text = "Welcome to BART Widget",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+        Text(
+            text = "This app runs primarily as a Home Screen widget.\n\n" +
+                   "To get started:\n\n" +
+                   "1. Go to your Android Home Screen.\n" +
+                   "2. Long-press on any empty space.\n" +
+                   "3. Tap 'Widgets' and find 'BART Widget'.\n" +
+                   "4. Drag the widget onto your Home Screen.\n" +
+                   "5. Tap the 'Select a Station' text on the widget to configure it.\n\n" +
+                   "You can resize the widget to fit more or fewer train lines.",
+            style = MaterialTheme.typography.bodyLarge
+        )
     }
 }
 
