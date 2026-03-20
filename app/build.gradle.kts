@@ -51,6 +51,8 @@ android {
 }
 
 dependencies {
+    implementation(files("libs/libsql-release.aar"))
+    implementation(libs.protobuf.java)
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation(platform("com.google.firebase:firebase-bom:34.10.0"))
     implementation("com.google.firebase:firebase-messaging")

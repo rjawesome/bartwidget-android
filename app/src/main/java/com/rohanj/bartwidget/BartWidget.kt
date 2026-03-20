@@ -24,7 +24,10 @@ import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
+import androidx.glance.LocalSize
+import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.provideContent
@@ -58,8 +61,24 @@ data class Departure(
 )
 
 class BartWidget : GlanceAppWidget() {
+    override val sizeMode: SizeMode = SizeMode.Exact
+
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        val appWidgetId = try {
+            GlanceAppWidgetManager(context).getAppWidgetId(id)
+        } catch (e: Exception) {
+            android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID
+        }
+
         provideContent {
+            val size = LocalSize.current
+            Log.d("BartFcmService", size.height.value.toString())
+            val maxLinesPerDirection = when {
+                size.height < 250.dp -> 1
+                size.height < 330.dp -> 2
+                else -> 5
+            }
+            
             val prefs = currentState<Preferences>()
             val isRefreshing = prefs[isRefreshingKey] ?: false
             val notificationData = prefs[widgetDataKey] ?: "Waiting for notification..."
@@ -114,7 +133,6 @@ class BartWidget : GlanceAppWidget() {
                                 val delayOpt = if (depObj.has("delay")) depObj.optLong("delay") else null
                                 val time = depObj.optLong("time", 0L)
                                 val timeMs = if (time > 20000000000L) time else time * 1000
-                                val delayMs = (delayOpt ?: 0L) * 1000L
                                 
                                 if (timeMs >= currentTimeMs) {
                                     deps.add(
@@ -141,7 +159,7 @@ class BartWidget : GlanceAppWidget() {
             val bootTimeMs = System.currentTimeMillis() - SystemClock.elapsedRealtime()
 
             val stationLines = departuresList.map { it.first }
-            val condition1 = stationLines.none { it.startsWith("Orange") } || stationLines.any { it.startsWith("Blue") || stationLines.any { it.startsWith("Green") }
+            val condition1 = stationLines.none { it.startsWith("Orange") } || stationLines.any { it.startsWith("Blue") } || stationLines.any { it.startsWith("Green") }
 
             val outboundLines = mutableListOf<Pair<String, List<Departure>>>()
             val inboundLines = mutableListOf<Pair<String, List<Departure>>>()
@@ -167,188 +185,35 @@ class BartWidget : GlanceAppWidget() {
             }
 
             outboundLines.sortBy { it.second.firstOrNull()?.time ?: Long.MAX_VALUE }
+            val displayOutboundLines = outboundLines.take(maxLinesPerDirection)
             inboundLines.sortBy { it.second.firstOrNull()?.time ?: Long.MAX_VALUE }
+            val displayInboundLines = inboundLines.take(maxLinesPerDirection)
 
             Column(
                 modifier = GlanceModifier.fillMaxSize().background(Color(0xFF121212)).padding(16.dp),
                 horizontalAlignment = Alignment.Start
             ) {
-                Text(
-                    text = displayStation,
-                    style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 18.sp, color = ColorProvider(Color.White)),
-                    modifier = GlanceModifier.padding(bottom = 12.dp).clickable(
-                        actionStartActivity(
-                            Intent(context, MainActivity::class.java).apply {
-                                action = "SELECT_STATION"
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                            }
-                        )
-                    )
-                )
-
-                if (outboundLines.isNotEmpty()) {
-                    Text(
-                        text = "Outbound",
-                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ColorProvider(Color.Gray)),
-                        modifier = GlanceModifier.padding(bottom = 8.dp)
-                    )
-                    Row(modifier = GlanceModifier.fillMaxWidth()) {
-                        Column(modifier = GlanceModifier.padding(end = 8.dp)) {
-                            outboundLines.forEach { (lineName, deps) ->
-                                val lineColor = when {
-                                    lineName.startsWith("Blue") -> Color(0xFF00AEEF)
-                                    lineName.startsWith("Red") -> Color(0xFFED1C24)
-                                    lineName.startsWith("Yellow") -> Color(0xFFFFD100)
-                                    lineName.startsWith("Green") -> Color(0xFF4DB848)
-                                    lineName.startsWith("Orange") -> Color(0xFFF8A81D)
-                                    else -> Color.Gray
-                                }
-                                Row(
-                                    modifier = GlanceModifier.padding(bottom = 6.dp).height(32.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = GlanceModifier
-                                            .size(12.dp)
-                                            .background(lineColor)
-                                            .cornerRadius(6.dp)
-                                    ) {}
-                                    Text(
-                                        text = deps.first().destination,
-                                        style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp, fontWeight = FontWeight.Medium),
-                                        modifier = GlanceModifier.padding(start = 8.dp)
-                                    )
-                                }
-                            }
-                        }
-                        Column {
-                            outboundLines.forEach { (lineName, deps) ->
-                                Row(
-                                    modifier = GlanceModifier.padding(bottom = 6.dp).height(32.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    deps.forEachIndexed { index, dep ->
-                                        val timeMs = if (dep.time > 20000000000L) dep.time else dep.time * 1000
-                                        val baseTime = timeMs - bootTimeMs
-                                        val remoteViews = RemoteViews(context.packageName, R.layout.split_chronometer).apply {
-                                            setChronometer(R.id.chronometer_min, baseTime, "%s", true)
-                                            setChronometer(R.id.chronometer_sec, baseTime, "%s", true)
-                                            if (dep.delay != null && dep.delay > 0) {
-                                                val delayMins = (dep.delay + 59) / 60
-                                                setViewVisibility(R.id.delay_text, android.view.View.VISIBLE)
-                                                setTextViewText(R.id.delay_text, "(+$delayMins)")
-                                            } else {
-                                                setViewVisibility(R.id.delay_text, android.view.View.GONE)
-                                            }
-                                        }
-                                        
-                                        AndroidRemoteViews(remoteViews = remoteViews)
-
-                                        if (index < deps.size - 1) {
-                                            Text(
-                                                text = ", ",
-                                                style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp),
-                                                modifier = GlanceModifier.padding(end = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (inboundLines.isNotEmpty()) {
-                    Text(
-                        text = "Inbound",
-                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ColorProvider(Color.Gray)),
-                        modifier = GlanceModifier.padding(top = 8.dp, bottom = 8.dp)
-                    )
-                    Row(modifier = GlanceModifier.fillMaxWidth()) {
-                        Column(modifier = GlanceModifier.padding(end = 8.dp)) {
-                            inboundLines.forEach { (lineName, deps) ->
-                                val lineColor = when {
-                                    lineName.startsWith("Blue") -> Color(0xFF00AEEF)
-                                    lineName.startsWith("Red") -> Color(0xFFED1C24)
-                                    lineName.startsWith("Yellow") -> Color(0xFFFFD100)
-                                    lineName.startsWith("Green") -> Color(0xFF4DB848)
-                                    lineName.startsWith("Orange") -> Color(0xFFF8A81D)
-                                    else -> Color.Gray
-                                }
-                                Row(
-                                    modifier = GlanceModifier.padding(bottom = 6.dp).height(32.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = GlanceModifier
-                                            .size(12.dp)
-                                            .background(lineColor)
-                                            .cornerRadius(6.dp)
-                                    ) {}
-                                    Text(
-                                        text = deps.first().destination,
-                                        style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp, fontWeight = FontWeight.Medium),
-                                        modifier = GlanceModifier.padding(start = 8.dp)
-                                    )
-                                }
-                            }
-                        }
-                        Column {
-                            inboundLines.forEach { (lineName, deps) ->
-                                Row(
-                                    modifier = GlanceModifier.padding(bottom = 6.dp).height(32.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    deps.forEachIndexed { index, dep ->
-                                        val timeMs = if (dep.time > 20000000000L) dep.time else dep.time * 1000
-                                        val baseTime = timeMs - bootTimeMs
-                                        val remoteViews = RemoteViews(context.packageName, R.layout.split_chronometer).apply {
-                                            setChronometer(R.id.chronometer_min, baseTime, "%s", true)
-                                            setChronometer(R.id.chronometer_sec, baseTime, "%s", true)
-                                            if (dep.delay != null && dep.delay > 0) {
-                                                val delayMins = (dep.delay + 59) / 60
-                                                setViewVisibility(R.id.delay_text, android.view.View.VISIBLE)
-                                                setTextViewText(R.id.delay_text, "(+$delayMins)")
-                                            } else {
-                                                setViewVisibility(R.id.delay_text, android.view.View.GONE)
-                                            }
-                                        }
-                                        
-                                        AndroidRemoteViews(remoteViews = remoteViews)
-
-                                        if (index < deps.size - 1) {
-                                            Text(
-                                                text = ", ",
-                                                style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp),
-                                                modifier = GlanceModifier.padding(end = 2.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 Row(
-                    modifier = GlanceModifier.fillMaxWidth().padding(top = 16.dp),
-                    verticalAlignment = Alignment.Bottom
+                    modifier = GlanceModifier.fillMaxWidth().padding(bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = GlanceModifier.defaultWeight()) {
-                        Text(
-                            text = "Last synced: $lastSyncedStr",
-                            style = TextStyle(fontSize = 12.sp, color = ColorProvider(Color.Gray))
+                    Text(
+                        text = displayStation,
+                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 18.sp, color = ColorProvider(Color.White)),
+                        modifier = GlanceModifier.defaultWeight().clickable(
+                            actionStartActivity(
+                                Intent(context, MainActivity::class.java).apply {
+                                    action = "SELECT_STATION"
+                                    putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                }
+                            )
                         )
-                        Text(
-                            text = "Last rendered: $lastRenderedStr",
-                            style = TextStyle(fontSize = 12.sp, color = ColorProvider(Color.Gray)),
-                            modifier = GlanceModifier.padding(top = 2.dp)
-                        )
-                    }
-                    
+                    )
+
                     if (isRefreshing) {
                         CircularProgressIndicator(
-                            modifier = GlanceModifier.size(28.dp),
+                            modifier = GlanceModifier.size(24.dp),
                             color = ColorProvider(Color.White)
                         )
                     } else {
@@ -356,10 +221,166 @@ class BartWidget : GlanceAppWidget() {
                             provider = ImageProvider(R.drawable.ic_refresh),
                             contentDescription = "Refresh",
                             modifier = GlanceModifier
-                                .size(28.dp)
+                                .size(24.dp)
                                 .clickable(actionRunCallback<RefreshAction>())
                         )
                     }
+                }
+
+                if (outboundLines.isNotEmpty()) {
+                    Text(
+                        text = "Destination",
+                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ColorProvider(Color.Gray)),
+                        modifier = GlanceModifier.padding(bottom = 8.dp)
+                    )
+                    Row(modifier = GlanceModifier.fillMaxWidth()) {
+                        Column(modifier = GlanceModifier.padding(end = 8.dp)) {
+                            displayOutboundLines.forEach { (lineName, deps) ->
+                                val lineColor = when {
+                                    lineName.startsWith("Blue") -> Color(0xFF00AEEF)
+                                    lineName.startsWith("Red") -> Color(0xFFED1C24)
+                                    lineName.startsWith("Yellow") -> Color(0xFFFFD100)
+                                    lineName.startsWith("Green") -> Color(0xFF4DB848)
+                                    lineName.startsWith("Orange") -> Color(0xFFF8A81D)
+                                    else -> Color.Gray
+                                }
+                                Row(
+                                    modifier = GlanceModifier.padding(bottom = 6.dp).height(32.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = GlanceModifier
+                                            .size(12.dp)
+                                            .background(lineColor)
+                                            .cornerRadius(6.dp)
+                                    ) {}
+                                    Text(
+                                        text = deps.first().destination,
+                                        style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp, fontWeight = FontWeight.Medium),
+                                        modifier = GlanceModifier.padding(start = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Column {
+                            displayOutboundLines.forEach { (_, deps) ->
+                                Row(
+                                    modifier = GlanceModifier.padding(bottom = 6.dp).height(32.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    deps.forEachIndexed { index, dep ->
+                                        val timeMs = if (dep.time > 20000000000L) dep.time else dep.time * 1000
+                                        val baseTime = timeMs - bootTimeMs
+                                        val remoteViews = RemoteViews(context.packageName, R.layout.split_chronometer).apply {
+                                            setChronometer(R.id.chronometer_min, baseTime, "%s", true)
+                                            setChronometer(R.id.chronometer_sec, baseTime, "%s", true)
+                                            if (dep.delay != null && dep.delay > 0) {
+                                                val delayMins = (dep.delay + 59) / 60
+                                                setViewVisibility(R.id.delay_text, android.view.View.VISIBLE)
+                                                setTextViewText(R.id.delay_text, "(+$delayMins)")
+                                            } else {
+                                                setViewVisibility(R.id.delay_text, android.view.View.GONE)
+                                            }
+                                        }
+                                        
+                                        AndroidRemoteViews(remoteViews = remoteViews)
+
+                                        if (index < deps.size - 1) {
+                                            Text(
+                                                text = ", ",
+                                                style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp),
+                                                modifier = GlanceModifier.padding(end = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (displayInboundLines.isNotEmpty()) {
+                    Text(
+                        text = "Destination",
+                        style = TextStyle(fontWeight = FontWeight.Bold, fontSize = 14.sp, color = ColorProvider(Color.Gray)),
+                        modifier = GlanceModifier.padding(top = 8.dp, bottom = 8.dp)
+                    )
+                    Row(modifier = GlanceModifier.fillMaxWidth()) {
+                        Column(modifier = GlanceModifier.padding(end = 8.dp)) {
+                            displayInboundLines.forEach { (lineName, deps) ->
+                                val lineColor = when {
+                                    lineName.startsWith("Blue") -> Color(0xFF00AEEF)
+                                    lineName.startsWith("Red") -> Color(0xFFED1C24)
+                                    lineName.startsWith("Yellow") -> Color(0xFFFFD100)
+                                    lineName.startsWith("Green") -> Color(0xFF4DB848)
+                                    lineName.startsWith("Orange") -> Color(0xFFF8A81D)
+                                    else -> Color.Gray
+                                }
+                                Row(
+                                    modifier = GlanceModifier.padding(bottom = 6.dp).height(32.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = GlanceModifier
+                                            .size(12.dp)
+                                            .background(lineColor)
+                                            .cornerRadius(6.dp)
+                                    ) {}
+                                    Text(
+                                        text = deps.first().destination,
+                                        style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp, fontWeight = FontWeight.Medium),
+                                        modifier = GlanceModifier.padding(start = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Column {
+                            displayInboundLines.forEach { (_, deps) ->
+                                Row(
+                                    modifier = GlanceModifier.padding(bottom = 6.dp).height(32.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    deps.forEachIndexed { index, dep ->
+                                        val timeMs = if (dep.time > 20000000000L) dep.time else dep.time * 1000
+                                        val baseTime = timeMs - bootTimeMs
+                                        val remoteViews = RemoteViews(context.packageName, R.layout.split_chronometer).apply {
+                                            setChronometer(R.id.chronometer_min, baseTime, "%s", true)
+                                            setChronometer(R.id.chronometer_sec, baseTime, "%s", true)
+                                            if (dep.delay != null && dep.delay > 0) {
+                                                val delayMins = (dep.delay + 59) / 60
+                                                setViewVisibility(R.id.delay_text, android.view.View.VISIBLE)
+                                                setTextViewText(R.id.delay_text, "(+$delayMins)")
+                                            } else {
+                                                setViewVisibility(R.id.delay_text, android.view.View.GONE)
+                                            }
+                                        }
+                                        
+                                        AndroidRemoteViews(remoteViews = remoteViews)
+
+                                        if (index < deps.size - 1) {
+                                            Text(
+                                                text = ", ",
+                                                style = TextStyle(color = ColorProvider(Color.White), fontSize = 16.sp),
+                                                modifier = GlanceModifier.padding(end = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Column(modifier = GlanceModifier.padding(top = 16.dp)) {
+                    Text(
+                        text = "Last synced: $lastSyncedStr",
+                        style = TextStyle(fontSize = 12.sp, color = ColorProvider(Color.Gray))
+                    )
+                    Text(
+                        text = "Last rendered: $lastRenderedStr",
+                        style = TextStyle(fontSize = 12.sp, color = ColorProvider(Color.Gray)),
+                        modifier = GlanceModifier.padding(top = 2.dp)
+                    )
                 }
             }
         }
@@ -384,9 +405,31 @@ class RefreshAction : ActionCallback {
         }
         BartWidget().update(context, glanceId)
                 
+        var stationName: String? = null
+        updateAppWidgetState(context, glanceId) { prefs ->
+            stationName = prefs[BartWidget.stationNameKey]
+        }
+        
+        var newData: String? = null
+        if (stationName != null) {
+            try {
+                newData = fetchRealtimeData(stationName!!)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        
         updateAppWidgetState(context, glanceId) { prefs ->
             prefs[BartWidget.isRefreshingKey] = false
             prefs[BartWidget.forceRefreshKey] = System.currentTimeMillis() // Forces rapid re-renders effectively bypassing optimization traps
+            
+            newData?.let { data ->
+                try {
+                    updateWidgetDataIfNewer(prefs, data)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
         }
         BartWidget().update(context, glanceId)
     }
