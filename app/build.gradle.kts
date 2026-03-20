@@ -1,3 +1,12 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("local.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.jetbrains.kotlin.android)
@@ -8,11 +17,37 @@ android {
     namespace = "com.rohanj.bartwidget"
     compileSdk = 34
 
+    signingConfigs {
+        create("release") {
+            // Using the properties we loaded above
+            val path = keystoreProperties.getProperty("signing.storeFile")
+            if (path != null) {
+                storeFile = file(path)
+            }
+            storePassword = keystoreProperties.getProperty("signing.storePassword")
+            keyAlias = keystoreProperties.getProperty("signing.keyAlias")
+            keyPassword = keystoreProperties.getProperty("signing.keyPassword")
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            // Link the signing configuration
+            signingConfig = signingConfigs.getByName("release")
+            ndk.debugSymbolLevel = "FULL"
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+
     defaultConfig {
         applicationId = "com.rohanj.bartwidget"
         minSdk = 24
-        targetSdk = 34
-        versionCode = 1
+        targetSdk = 35
+        versionCode = 2
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -21,15 +56,6 @@ android {
         }
     }
 
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
