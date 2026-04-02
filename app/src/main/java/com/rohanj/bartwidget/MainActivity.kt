@@ -236,7 +236,7 @@ fun InstructionsScreen() {
                    "To get started:\n\n" +
                    "1. Go to your Android Home Screen.\n" +
                    "2. Long-press on any empty space.\n" +
-                   "3. Tap 'Widgets' and find 'BART Widget'.\n" +
+                   "3. Tap 'Widgets' and find 'Widget for BART'.\n" +
                    "4. Drag the widget onto your Home Screen.\n" +
                    "5. Tap the 'Select a Station' text on the widget to configure it.\n\n" +
                    "You can resize the widget to fit more or fewer train lines.",
