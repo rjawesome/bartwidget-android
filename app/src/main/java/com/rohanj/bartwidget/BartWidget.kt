@@ -192,9 +192,10 @@ class BartWidget : GlanceAppWidget() {
             }
 
             outboundLines.sortBy { it.second.firstOrNull()?.time ?: Long.MAX_VALUE }
-            val displayOutboundLines = outboundLines.take(maxLinesPerDirection)
             inboundLines.sortBy { it.second.firstOrNull()?.time ?: Long.MAX_VALUE }
-            val displayInboundLines = inboundLines.take(maxLinesPerDirection)
+
+            val displayOutboundLines = outboundLines.take(if (inboundLines.isEmpty()) maxLinesPerDirection * 2 else maxLinesPerDirection)
+            val displayInboundLines = inboundLines.take(if (outboundLines.isEmpty()) maxLinesPerDirection * 2 else maxLinesPerDirection)
 
             Column(
                 modifier = GlanceModifier.fillMaxSize().background(Color(0xFF121212)).padding(16.dp),

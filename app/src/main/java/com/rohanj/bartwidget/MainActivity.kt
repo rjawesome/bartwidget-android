@@ -158,7 +158,10 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                Surface(
+                    modifier = Modifier.fillMaxSize().systemBarsPadding(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
                     if (appWidgetId == android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID) {
                         InstructionsScreen()
                     } else {
@@ -190,6 +193,8 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        val isSameStation = stationName == intent?.getStringExtra("station_name")
+
         CoroutineScope(Dispatchers.Main).launch {
             try {
                 val manager = GlanceAppWidgetManager(this@MainActivity)
@@ -197,21 +202,27 @@ class MainActivity : ComponentActivity() {
                 
                 var errorMessage: String? = null
                 var responseData: String? = null
-                val success = try {
-                    responseData = fetchRealtimeData(stationName)
+                val success = if (isSameStation) {
                     true
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    errorMessage = e.localizedMessage
-                    false
+                } else {
+                    try {
+                        responseData = fetchRealtimeData(stationName)
+                        true
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        errorMessage = e.localizedMessage
+                        false
+                    }
                 }
 
                 if (success) {
-                    try {
-                        val topic = "BART_${stationNameToTopic(stationName)}"
-                        FirebaseMessaging.getInstance().subscribeToTopic(topic).await()
-                    } catch (e: Exception) {
-                        e.printStackTrace()
+                    if (!isSameStation) {
+                        try {
+                            val topic = "BART_${stationNameToTopic(stationName)}"
+                            FirebaseMessaging.getInstance().subscribeToTopic(topic).await()
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
                     }
 
                     updateAppWidgetState(this@MainActivity, targetGlanceId) { prefs ->
@@ -235,7 +246,11 @@ class MainActivity : ComponentActivity() {
                     
                     BartWidget().update(this@MainActivity, targetGlanceId)
 
-                    Toast.makeText(this@MainActivity, "Subscribed to $stationName!", Toast.LENGTH_SHORT).show()
+                    if (!isSameStation) {
+                        Toast.makeText(this@MainActivity, "Subscribed to $stationName!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(this@MainActivity, "Filters updated!", Toast.LENGTH_SHORT).show()
+                    }
                     
                     val resultValue = Intent().putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     setResult(RESULT_OK, resultValue)
