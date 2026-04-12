@@ -9,14 +9,18 @@ import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.compose.material3.darkColorScheme
@@ -43,6 +47,31 @@ import tech.turso.libsql.Libsql
 const val API_BASE_URL = "http://192.168.0.193:3000" // TODO: Change this to your actual API server URL
 const val TURSO_URL = "libsql://realtimedata-aonedtop.aws-us-west-2.turso.io"
 const val TURSO_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicm8iLCJpYXQiOjE3NzM4ODcxMzQsImlkIjoiMDE5ZDAzZTctNDgwMS03NDRkLWI5MDYtOTA4ZjFkNTQxN2ExIiwicmlkIjoiZmUxMGRmYTktN2E0Mi00OTI1LThmNDItOGNiNzEzZGE5YzcyIn0._8CKu3Uv6uH6BZ_DZksTmogtw9Xprr5v-gwADzXkK1Ma2pLnWB97BeMHfwLcAZbPlTnjjSz0TqkC2kY_eVDeCQ"
+
+data class Station(val name: String, val lat: Double, val lon: Double)
+
+fun parseStationsData(dataStr: String): List<Station> {
+    return try {
+        val stationsMap = JSONObject(dataStr)
+        val fetchedStations = mutableListOf<Station>()
+        val keys = stationsMap.keys()
+        val addedNames = mutableSetOf<String>()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val obj = stationsMap.getJSONObject(key)
+            val name = obj.getString("name")
+            if (!addedNames.contains(name)) {
+                val lat = obj.optString("lat", "0").toDoubleOrNull() ?: 0.0
+                val lon = obj.optString("lon", "0").toDoubleOrNull() ?: 0.0
+                fetchedStations.add(Station(name, lat, lon))
+                addedNames.add(name)
+            }
+        }
+        fetchedStations.sortedBy { it.name }
+    } catch (e: Exception) {
+        emptyList()
+    }
+}
 
 val BART_LINES = mapOf(
     "Red-N" to "Red - Richmond",
@@ -281,6 +310,16 @@ fun FilterLinesScreen(initialFilters: Set<String>?, onFiltersComplete: (Set<Stri
             items(BART_LINES.entries.toList()) { entry ->
                 val lineId = entry.key
                 val lineName = entry.value
+                
+                val lineColor = when {
+                    lineName.startsWith("Blue") -> Color(0xFF00AEEF)
+                    lineName.startsWith("Red") -> Color(0xFFED1C24)
+                    lineName.startsWith("Yellow") -> Color(0xFFFFD100)
+                    lineName.startsWith("Green") -> Color(0xFF4DB848)
+                    lineName.startsWith("Orange") -> Color(0xFFF8A81D)
+                    else -> Color.Gray
+                }
+                
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -297,6 +336,12 @@ fun FilterLinesScreen(initialFilters: Set<String>?, onFiltersComplete: (Set<Stri
                     Checkbox(
                         checked = selectedLines.contains(lineId),
                         onCheckedChange = null
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .background(lineColor, RoundedCornerShape(8.dp))
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(text = lineName, style = MaterialTheme.typography.bodyLarge)
@@ -349,19 +394,49 @@ fun StationSelectionScreen(onStationSelected: (String) -> Unit) {
     val sharedPrefs = context.getSharedPreferences("bart_stations_cache", android.content.Context.MODE_PRIVATE)
 
     var stations by remember {
-        mutableStateOf<List<String>>(
-            sharedPrefs.getString("stations", null)?.let {
-                try {
-                    val array = JSONArray(it)
-                    List(array.length()) { i -> array.getString(i) }
-                } catch (e: Exception) { emptyList() }
+        mutableStateOf<List<Station>>(
+            sharedPrefs.getString("stations_v2", null)?.let {
+                parseStationsData(it)
             } ?: emptyList()
         )
     }
     var searchQuery by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(stations.isEmpty()) }
+    var userLocation by remember { mutableStateOf<android.location.Location?>(null) }
+
+    val locationPermissionRequest = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.getOrDefault(Manifest.permission.ACCESS_FINE_LOCATION, false) ||
+            permissions.getOrDefault(Manifest.permission.ACCESS_COARSE_LOCATION, false)) {
+            val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
+            try {
+                val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                if (loc != null) {
+                    userLocation = loc
+                } else {
+                    Toast.makeText(context, "Could not determine location", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: SecurityException) { e.printStackTrace() }
+        } else {
+            Toast.makeText(context, "Location permission denied", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     LaunchedEffect(Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
+            try {
+                val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                if (loc != null) {
+                    userLocation = loc
+                }
+            } catch (e: SecurityException) { e.printStackTrace() }
+        }
+
         withContext(Dispatchers.IO) {
             try {
                 val db = Libsql.open(
@@ -371,7 +446,7 @@ fun StationSelectionScreen(onStationSelected: (String) -> Unit) {
 
                 var dataStr: String? = null
                 db.connect().use { conn ->
-                    val rs = conn.query("SELECT data FROM stations WHERE system = 'BART'")
+                    val rs = conn.query("SELECT data FROM stations WHERE system = 'BART2'")
                     val row = rs.firstOrNull()
                     if (row != null) {
                         dataStr = row[0] as? String
@@ -379,12 +454,8 @@ fun StationSelectionScreen(onStationSelected: (String) -> Unit) {
                 }
                 
                 if (dataStr != null) {
-                    sharedPrefs.edit().putString("stations", dataStr).apply()
-                    val stationsArray = JSONArray(dataStr)
-                    val fetchedStations = mutableListOf<String>()
-                    for (i in 0 until stationsArray.length()) {
-                        fetchedStations.add(stationsArray.getString(i))
-                    }
+                    sharedPrefs.edit().putString("stations_v2", dataStr).apply()
+                    val fetchedStations = parseStationsData(dataStr!!)
                     withContext(Dispatchers.Main) {
                         stations = fetchedStations
                     }
@@ -409,28 +480,80 @@ fun StationSelectionScreen(onStationSelected: (String) -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = { searchQuery = it },
-            label = { Text("Search Station") },
-            modifier = Modifier.fillMaxWidth()
-        )
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = { Text("Search Station") },
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                onClick = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+                        val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as android.location.LocationManager
+                        try {
+                            val loc = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                                ?: locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                            if (loc != null) {
+                                userLocation = loc
+                            } else {
+                                Toast.makeText(context, "Could not determine location", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: SecurityException) { e.printStackTrace() }
+                    } else {
+                        locationPermissionRequest.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                    }
+                }
+            ) {
+                Text("Nearby")
+            }
+        }
         Spacer(modifier = Modifier.height(16.dp))
         
         if (isLoading) {
             CircularProgressIndicator()
         } else {
-            val filteredStations = stations.filter { it.contains(searchQuery, ignoreCase = true) }
+            val filteredStations = stations.filter { it.name.contains(searchQuery, ignoreCase = true) }.let { list ->
+                if (userLocation != null) {
+                    list.sortedBy { station ->
+                        val results = FloatArray(1)
+                        android.location.Location.distanceBetween(userLocation!!.latitude, userLocation!!.longitude, station.lat, station.lon, results)
+                        results[0]
+                    }
+                } else list
+            }
             LazyColumn {
                 items(filteredStations) { station ->
-                    Text(
-                        text = station,
+                    var distanceText = ""
+                    if (userLocation != null) {
+                        val results = FloatArray(1)
+                        android.location.Location.distanceBetween(userLocation!!.latitude, userLocation!!.longitude, station.lat, station.lon, results)
+                        val distanceMiles = results[0] / 1609.344f
+                        if (distanceMiles < 10f) {
+                            distanceText = String.format(java.util.Locale.getDefault(), "%.2f mi", distanceMiles)
+                        }
+                    }
+
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onStationSelected(station) }
-                            .padding(16.dp),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
+                            .clickable { onStationSelected(station.name) }
+                            .padding(16.dp)
+                    ) {
+                        Text(
+                            text = station.name,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        if (distanceText.isNotEmpty()) {
+                            Text(
+                                text = distanceText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                     HorizontalDivider()
                 }
             }
