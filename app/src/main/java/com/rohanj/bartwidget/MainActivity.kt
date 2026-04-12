@@ -28,6 +28,7 @@ import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.appwidget.updateAll
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +43,19 @@ import tech.turso.libsql.Libsql
 const val API_BASE_URL = "http://192.168.0.193:3000" // TODO: Change this to your actual API server URL
 const val TURSO_URL = "libsql://realtimedata-aonedtop.aws-us-west-2.turso.io"
 const val TURSO_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicm8iLCJpYXQiOjE3NzM4ODcxMzQsImlkIjoiMDE5ZDAzZTctNDgwMS03NDRkLWI5MDYtOTA4ZjFkNTQxN2ExIiwicmlkIjoiZmUxMGRmYTktN2E0Mi00OTI1LThmNDItOGNiNzEzZGE5YzcyIn0._8CKu3Uv6uH6BZ_DZksTmogtw9Xprr5v-gwADzXkK1Ma2pLnWB97BeMHfwLcAZbPlTnjjSz0TqkC2kY_eVDeCQ"
+
+val BART_LINES = mapOf(
+    "Red-N" to "Red - Richmond",
+    "Red-S" to "Red - Millbrae",
+    "Yellow-N" to "Yellow - Antioch",
+    "Yellow-S" to "Yellow - SFO",
+    "Green-N" to "Green - Berryessa",
+    "Green-S" to "Green - Daly City",
+    "Orange-N" to "Orange - Richmond",
+    "Orange-S" to "Orange - Berryessa",
+    "Blue-N" to "Blue - Dublin/Pleasanton",
+    "Blue-S" to "Blue - Daly City"
+)
 
 suspend fun fetchRealtimeData(stationName: String): String? {
     return withContext(Dispatchers.IO) {
@@ -138,6 +152,9 @@ class MainActivity : ComponentActivity() {
             android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID,
             android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID
         ) ?: android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID
+        
+        val passedStation = intent?.getStringExtra("station_name")
+        val passedFilters = intent?.getStringArrayExtra("filtered_lines")?.toSet()
 
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
@@ -145,18 +162,28 @@ class MainActivity : ComponentActivity() {
                     if (appWidgetId == android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID) {
                         InstructionsScreen()
                     } else {
-                        StationSelectionScreen(
-                            onStationSelected = { station ->
-                                registerStation(station, appWidgetId)
-                            }
-                        )
+                        var selectedStation by remember { mutableStateOf<String?>(passedStation) }
+                        if (selectedStation == null) {
+                            StationSelectionScreen(
+                                onStationSelected = { station ->
+                                    selectedStation = station
+                                }
+                            )
+                        } else {
+                            FilterLinesScreen(
+                                initialFilters = passedFilters,
+                                onFiltersComplete = { selectedLines ->
+                                    registerStation(selectedStation!!, selectedLines, appWidgetId)
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    private fun registerStation(stationName: String, appWidgetId: Int) {   
+    private fun registerStation(stationName: String, selectedLines: Set<String>, appWidgetId: Int) {   
         if (appWidgetId == android.appwidget.AppWidgetManager.INVALID_APPWIDGET_ID) {
             Toast.makeText(this, "Please add a widget to the home screen and press Select Station on the widget.", Toast.LENGTH_LONG).show()
             finish()
@@ -190,6 +217,13 @@ class MainActivity : ComponentActivity() {
                     updateAppWidgetState(this@MainActivity, targetGlanceId) { prefs ->
                         prefs[BartWidget.stationNameKey] = stationName
                         
+                        val filteredLinesKey = stringSetPreferencesKey("filtered_lines")
+                        if (selectedLines.size == BART_LINES.size) {
+                            prefs.remove(filteredLinesKey)
+                        } else {
+                            prefs[filteredLinesKey] = selectedLines
+                        }
+                        
                         if (responseData != null) {
                             try {
                                 updateWidgetDataIfNewer(prefs, responseData)
@@ -213,6 +247,54 @@ class MainActivity : ComponentActivity() {
                 e.printStackTrace()
                 Toast.makeText(this@MainActivity, "An issue occurred: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+}
+
+@Composable
+fun FilterLinesScreen(initialFilters: Set<String>?, onFiltersComplete: (Set<String>) -> Unit) {
+    var selectedLines by remember { mutableStateOf(initialFilters ?: BART_LINES.keys.toSet()) }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text(
+            text = "Filter Lines",
+            style = MaterialTheme.typography.headlineMedium,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            items(BART_LINES.entries.toList()) { entry ->
+                val lineId = entry.key
+                val lineName = entry.value
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            selectedLines = if (selectedLines.contains(lineId)) {
+                                selectedLines - lineId
+                            } else {
+                                selectedLines + lineId
+                            }
+                        }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = selectedLines.contains(lineId),
+                        onCheckedChange = null
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(text = lineName, style = MaterialTheme.typography.bodyLarge)
+                }
+                HorizontalDivider()
+            }
+        }
+        
+        Button(
+            onClick = { onFiltersComplete(selectedLines) },
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+        ) {
+            Text("Save & Complete")
         }
     }
 }
@@ -249,9 +331,20 @@ fun InstructionsScreen() {
 @Composable
 fun StationSelectionScreen(onStationSelected: (String) -> Unit) {
     val context = LocalContext.current
-    var stations by remember { mutableStateOf<List<String>>(emptyList()) }
+    val sharedPrefs = context.getSharedPreferences("bart_stations_cache", android.content.Context.MODE_PRIVATE)
+
+    var stations by remember {
+        mutableStateOf<List<String>>(
+            sharedPrefs.getString("stations", null)?.let {
+                try {
+                    val array = JSONArray(it)
+                    List(array.length()) { i -> array.getString(i) }
+                } catch (e: Exception) { emptyList() }
+            } ?: emptyList()
+        )
+    }
     var searchQuery by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(stations.isEmpty()) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -271,24 +364,31 @@ fun StationSelectionScreen(onStationSelected: (String) -> Unit) {
                 }
                 
                 if (dataStr != null) {
+                    sharedPrefs.edit().putString("stations", dataStr).apply()
                     val stationsArray = JSONArray(dataStr)
                     val fetchedStations = mutableListOf<String>()
                     for (i in 0 until stationsArray.length()) {
                         fetchedStations.add(stationsArray.getString(i))
                     }
-                    stations = fetchedStations
-                } else {
+                    withContext(Dispatchers.Main) {
+                        stations = fetchedStations
+                    }
+                } else if (stations.isEmpty()) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, "No stations found in database", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "An issue occurred fetching stations: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                if (stations.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "An issue occurred fetching stations: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    }
                 }
             } finally {
-                isLoading = false
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                }
             }
         }
     }

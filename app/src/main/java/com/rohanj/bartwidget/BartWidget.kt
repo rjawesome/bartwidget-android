@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.glance.Button
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
@@ -40,6 +41,7 @@ import androidx.glance.layout.Row
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.height
 import androidx.glance.layout.size
+import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.padding
 import androidx.glance.text.FontWeight
@@ -83,6 +85,7 @@ class BartWidget : GlanceAppWidget() {
             val isRefreshing = prefs[isRefreshingKey] ?: false
             val notificationData = prefs[widgetDataKey] ?: "Waiting for notification..."
             val savedStation = prefs[stationNameKey]
+            val filteredLines = prefs[filteredLinesKey]
 
             val displayStation = if (savedStation != null) "$savedStation \u25BE" else "Select a Station \u25BE"
             val departuresList = mutableListOf<Pair<String, List<Departure>>>()
@@ -124,6 +127,10 @@ class BartWidget : GlanceAppWidget() {
                 val keys = departuresJson.keys()
                 while (keys.hasNext()) {
                     val lineName = keys.next()
+                    if (filteredLines != null && !filteredLines.contains(lineName)) {
+                        continue
+                    }
+                    
                     val depsArray = departuresJson.optJSONArray(lineName)
                     val deps = mutableListOf<Departure>()
                     if (depsArray != null) {
@@ -210,6 +217,27 @@ class BartWidget : GlanceAppWidget() {
                             )
                         )
                     )
+
+                    if (savedStation != null) {
+                        Image(
+                            provider = ImageProvider(R.drawable.ic_filter),
+                            contentDescription = "Filter",
+                            modifier = GlanceModifier
+                                .size(24.dp)
+                                .clickable(
+                                    actionStartActivity(
+                                        Intent(context, MainActivity::class.java).apply {
+                                            action = "FILTER_LINES"
+                                            putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                                            putExtra("station_name", savedStation)
+                                            putExtra("filtered_lines", filteredLines?.toTypedArray())
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                                        }
+                                    )
+                                )
+                        )
+                        Spacer(modifier = GlanceModifier.size(12.dp))
+                    }
 
                     if (isRefreshing) {
                         CircularProgressIndicator(
@@ -391,6 +419,7 @@ class BartWidget : GlanceAppWidget() {
         val isRefreshingKey = booleanPreferencesKey("is_refreshing")
         val forceRefreshKey = longPreferencesKey("force_refresh")
         val stationNameKey = stringPreferencesKey("station_name")
+        val filteredLinesKey = stringSetPreferencesKey("filtered_lines")
     }
 }
 
